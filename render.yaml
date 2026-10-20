@@ -1,0 +1,89 @@
+# Render Blueprint: Hostel Management System
+#
+#   arihant-hostel-api  - Flask API      (free web service, Python)
+#   arihant-hostel-app  - React frontend (static site, free)
+#
+# The database is Neon (free PostgreSQL) and email goes through Brevo's free
+# HTTPS API, because free Render web services block outgoing SMTP ports.
+# Step-by-step instructions: README.md -> "Deploying to Render (free)".
+#
+# Values marked `sync: false` are asked for when you create the Blueprint.
+services:
+  - type: web
+    name: arihant-hostel-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    # Runs on every start: apply migrations, create the admin from
+    # ADMIN_EMAIL/ADMIN_PASSWORD if missing, then start the server.
+    # One worker: the login/sign-up rate limiters live in process memory.
+    startCommand: >-
+      cd backend &&
+      flask db upgrade &&
+      flask ensure-admin &&
+      exec gunicorn --workers 1 --threads 4 --timeout 120
+      --bind 0.0.0.0:$PORT run:app
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_APP
+        value: run.py
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      # Render puts the visitor's real IP in this header (used for rate limits).
+      - key: CLIENT_IP_HEADER
+        value: True-Client-IP
+      - key: MAIL_BACKEND
+        value: brevo
+      - key: HOSTEL_NAME
+        value: HostelHub Residence
+      # --- asked for during Blueprint creation ---
+      # Neon connection string: postgresql://...neon.tech/neondb?sslmode=require
+      - key: DATABASE_URL
+        sync: false
+      # Public URL of the frontend static site, e.g. https://arihant-hostel-app.onrender.com
+      - key: FRONTEND_URL
+        sync: false
+      # Brevo -> SMTP & API -> API Keys
+      - key: BREVO_API_KEY
+        sync: false
+      # A sender verified in Brevo, e.g.  HostelHub <you@gmail.com>
+      - key: MAIL_DEFAULT_SENDER
+        sync: false
+      # First administrator (password: 10+ chars, upper, lower and a digit)
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+
+  - type: web
+    name: arihant-hostel-app
+    runtime: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: ./frontend/dist
+    autoDeploy: true
+    envVars:
+      # API address including /api, e.g. https://arihant-hostel-api.onrender.com/api
+      # It is built into the JavaScript, so change it -> redeploy the static site.
+      - key: VITE_API_BASE_URL
+        sync: false
+    routes:
+      # React Router: unknown paths (e.g. /reset-password) serve the app.
+      # Render only applies this when no real file exists at the path.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin

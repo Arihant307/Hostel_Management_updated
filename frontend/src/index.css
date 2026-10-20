@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply bg-surface-muted font-sans text-slate-800;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-navy-500 ring-offset-2;
+  }
+}
